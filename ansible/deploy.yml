@@ -1,7 +1,23 @@
 ---
+# =================================================================
+# ÉTAPE PRÉALABLE : Installation des prérequis Python sans plantage
+# =================================================================
+- name: Pre-requisites installation
+  hosts: all
+  gather_facts: false # On désactive l'analyse pour éviter l'erreur JSON
+  become: yes
+  tasks:
+    - name: Ensure python3 and simplejson are installed
+      raw: dnf install -y python3 python3-pip || yum install -y python3 python3-pip || apt-get install -y python3 python3-simplejson
+      changes_only: no
+
+# =================================================================
+# ÉTAPE PRINCIPALE : Déploiement de l'application E-Commerce
+# =================================================================
 - name: Deploy E-Commerce Application Stack
   hosts: all
   become: yes
+  gather_facts: true # Maintenant qu'on a réparé Python, on peut l'activer sans risque
   vars:
     # Définition des versions et configurations de l'application
     app_dir: "/home/ec2-user/ecommerce-app"
