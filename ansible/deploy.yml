@@ -55,7 +55,8 @@
             image: node:18-alpine
             container_name: node_app
             working_dir: /usr/src/app
-            command: sh -c "npm install -g pm2 && echo 'const http = require(\"http\"); const server = http.createServer((req, res) => { res.writeHead(200, {\"Content-Type\": \"text/html\"}); res.end(\"<h1>E-Commerce Store</h1><ul><li>Laptop \$$1200</li><li>Phone \$$800</li></ul>\"); }); server.listen(3000, () => console.log(\"Server running on port 3000\"));' > app.js && pm2-runtime start app.js"
+            command: >
+              sh -c "npm install -g pm2 && echo 'const http = require(\"http\"); const server = http.createServer((req, res) => { res.writeHead(200, {\"Content-Type\":\"text/html\"}); res.end(\"<h1>E-Commerce Store</h1><ul><li>Laptop \$1200</li><li>Phone \$800</li></ul>\"); }); server.listen(3000, () => console.log(\"Server running\"));' > app.js && pm2-runtime start app.js"
             ports:
               - "3000:3000"
             depends_on:
