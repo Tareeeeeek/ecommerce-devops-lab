@@ -182,7 +182,7 @@ data "aws_ssm_parameter" "amazon_linux" {
 
 resource "aws_instance" "web" {
   count                       = 2
-  ami                         = "data.aws_ssm_parameter.amazon_linux.value" # ID AMI Amazon Linux 2 (Vérifie si elle correspond bien à ta région)
+  ami                         = data.aws_ssm_parameter.amazon_linux.value # ID AMI Amazon Linux 2 (Vérifie si elle correspond bien à ta région)
   instance_type               = "t3.micro"
   
   # Répartit les 2 instances sur tes sous-réseaux publics pour l'accès Ansible
