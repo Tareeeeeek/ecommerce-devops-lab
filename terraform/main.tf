@@ -139,51 +139,60 @@ resource "aws_lb" "web_alb" {
 }
 
 # =========================
-# Launch Template
+# Target Group & Listener pour l'ALB
 # =========================
 
-data "aws_ssm_parameter" "amazon_linux" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+resource "aws_lb_target_group" "web_tg" {
+  name     = "TG-WebApps"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+
+  health_check {
+    path                = "/"
+    port                = "80"
+    protocol            = "HTTP"
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+  }
 }
 
-resource "aws_launch_template" "web" {
-  name_prefix   = "web-config"
-  image_id      = data.aws_ssm_parameter.amazon_linux.value
-  instance_type = "t3.micro"
+resource "aws_lb_listener" "front_end" {
+  load_balancer_arn = aws_lb.web_alb.arn
+  port              = "80"
+  protocol          = "HTTP"
 
-  iam_instance_profile {
-    name = "LabInstanceProfile"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web_tg.arn
   }
-
-  network_interfaces {
-    associate_public_ip_address = false
-    security_groups             = [aws_security_group.web_sg.id]
-  }
-
-  user_data = base64encode(<<-EOF
-#!/bin/bash
-dnf update -y
-dnf install -y httpd
-systemctl start httpd
-systemctl enable httpd
-echo "Hello from Terraform" > /var/www/html/index.html
-EOF
-  )
 }
 
 # =========================
-# Auto Scaling Group
+# Instances EC2 (Attendues par outputs.tf)
 # =========================
 
-resource "aws_autoscaling_group" "web_asg" {
-  vpc_zone_identifier = aws_subnet.private[*].id
+resource "aws_instance" "web" {
+  count                       = 2
+  ami                         = "ami-0c55b159cbfafe1f0" # ID AMI Amazon Linux 2 (Vérifie si elle correspond bien à ta région)
+  instance_type               = "t3.micro"
+  
+  # Répartit les 2 instances sur tes sous-réseaux publics pour l'accès Ansible
+  subnet_id                   = aws_subnet.public[count.index].id
+  vpc_security_group_ids      = [aws_security_group.web_sg.id]
+  associate_public_ip_address = true
 
-  desired_capacity = 2
-  max_size         = 4
-  min_size         = 2
-
-  launch_template {
-    id      = aws_launch_template.web.id
-    version = "$Latest"
+  tags = {
+    Name = "EC2-Instance-${count.index + 1}"
   }
+}
+
+# Liaison des instances au Target Group
+resource "aws_lb_target_group_attachment" "web_attach" {
+  count            = 2
+  target_group_arn = aws_lb_target_group.web_tg.arn
+  target_id        = aws_instance.web[count.index].id
+  port             = 80
 }
