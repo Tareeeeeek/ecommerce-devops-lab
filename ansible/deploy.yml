@@ -1,68 +1,45 @@
 ---
-# =================================================================
-# ÉTAPE PRÉALABLE : Installation des prérequis Python (Optionnel mais conservé)
-# =================================================================
-- name: Pre-requisites installation
-  hosts: all
-  gather_facts: false
-  become: yes
-  tasks:
-    - name: Ensure python3 and simplejson are installed
-      raw: dnf install -y python3 python3-pip || yum install -y python3 python3-pip || apt-get install -y python3 python3-simplejson
-
-# =================================================================
-# ÉTAPE PRINCIPALE : Déploiement de l'application E-Commerce
-# =================================================================
 - name: Deploy E-Commerce Application Stack
   hosts: all
   become: yes
-  gather_facts: false # <-- MODIFICATION ICI : On le passe à false pour éviter le crash !
+  gather_facts: false # Toujours désactivé
+
   vars:
-    # Définition des versions et configurations de l'application
     app_dir: "/home/ec2-user/ecommerce-app"
 
   tasks:
     # -------------------------------------------------------------
-    # ÉTAPES D'INSTALLATION DE DOCKER & DOCKER-COMPOSE
+    # ÉTAPES D'INSTALLATION DE DOCKER & DOCKER-COMPOSE (VIA COMMAND)
     # -------------------------------------------------------------
     - name: Update all packages (yum)
-      yum:
-        name: "*"
-        state: latest
+      command: yum update -y --skip-broken
 
     - name: Install Docker
-      yum:
-        name: docker
-        state: present
+      command: yum install -y docker
 
     - name: Start and enable Docker service
-      service:
-        name: docker
-        state: started
-        enabled: yes
+      command: systemctl start docker
+      
+    - name: Enable Docker service
+      command: systemctl enable docker
 
     - name: Add ec2-user to docker group
-      user:
-        name: ec2-user
-        groups: docker
-        append: yes
+      command: usermod -aG docker ec2-user
 
     - name: Download Docker Compose v2
-      get_url:
-        url: https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64
-        dest: /usr/local/bin/docker-compose
-        mode: '0755'
+      command: curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+
+    - name: Make Docker Compose executable
+      command: chmod +x /usr/local/bin/docker-compose
 
     # -------------------------------------------------------------
     # PRÉPARATION DE L'APPLICATION (DOCKER-COMPOSE STATS)
     # -------------------------------------------------------------
     - name: Create application directory
-      file:
-        path: "{{ app_dir }}"
-        state: directory
-        owner: ec2-user
-        group: ec2-user
-        mode: '0755'
+      command: mkdir -p "{{ app_dir }}"
+
+    - name: Set permissions on application directory
+      command: chown -R ec2-user:ec2-user "{{ app_dir }}"
 
     - name: Create docker-compose.yml configuration file
       copy:
@@ -142,12 +119,12 @@
     # LANCEMENT DE LA ARCHITECTURE APPLICATIVE
     # -------------------------------------------------------------
     - name: Tear down existing Docker Compose services (if any)
-      shell: /usr/local/bin/docker-compose down
+      command: /usr/local/bin/docker-compose down
       args:
         chdir: "{{ app_dir }}"
       failed_when: false
 
     - name: Start stack using Docker Compose
-      shell: /usr/local/bin/docker-compose up -d
+      command: /usr/local/bin/docker-compose up -d
       args:
         chdir: "{{ app_dir }}"
