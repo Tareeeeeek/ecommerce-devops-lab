@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "aws" {
-  region                   = "us-east-1"
+  region = "us-east-1"
 }
 
 # =========================
@@ -69,6 +69,29 @@ resource "aws_subnet" "private" {
   tags = {
     Name = "Private-Subnet-${count.index + 1}"
   }
+}
+
+# =======================================================
+# Route Table & Associations (CORRECTION ROUTAGE ROUTE)
+# =======================================================
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = {
+    Name = "Public-Route-Table"
+  }
+}
+
+resource "aws_route_table_association" "public_assoc" {
+  count          = 2
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
 }
 
 # =========================
@@ -134,7 +157,7 @@ resource "aws_lb" "web_alb" {
   load_balancer_type = "application"
 
   security_groups = [aws_security_group.alb_sg.id]
-  subnets         = aws_subnet.public[*].id
+  subnets            = aws_subnet.public[*].id
 }
 
 # =========================
@@ -177,15 +200,15 @@ data "aws_ssm_parameter" "amazon_linux" {
 }
 
 # =========================
-# Instances EC2 (Attendues par outputs.tf)
+# Instances EC2
 # =========================
 
 resource "aws_instance" "web" {
   count                       = 2
-  ami                         = data.aws_ssm_parameter.amazon_linux.value # ID AMI Amazon Linux 2 (Vérifie si elle correspond bien à ta région)
+  ami                         = data.aws_ssm_parameter.amazon_linux.value
   instance_type               = "t3.micro"
-  
-  # Répartit les 2 instances sur tes sous-réseaux publics pour l'accès Ansible
+  key_name                    = "vockey" # <-- CORRECTION CLÉ SSH LEARNER LAB
+
   subnet_id                   = aws_subnet.public[count.index].id
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
   associate_public_ip_address = true
