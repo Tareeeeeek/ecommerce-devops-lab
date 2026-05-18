@@ -2,129 +2,116 @@
 - name: Deploy E-Commerce Application Stack
   hosts: all
   become: yes
-  gather_facts: false # Toujours désactivé
+  gather_facts: false
 
   vars:
     app_dir: "/home/ec2-user/ecommerce-app"
 
   tasks:
     # -------------------------------------------------------------
-    # ÉTAPES D'INSTALLATION DE DOCKER & DOCKER-COMPOSE (VIA COMMAND)
+    # ÉTAPES D'INSTALLATION DE DOCKER & DOCKER-COMPOSE (VIA RAW)
     # -------------------------------------------------------------
     - name: Update all packages (yum)
-      command: yum update -y --skip-broken
+      raw: yum update -y --skip-broken
 
     - name: Install Docker
-      command: yum install -y docker
+      raw: yum install -y docker
 
     - name: Start and enable Docker service
-      command: systemctl start docker
-      
-    - name: Enable Docker service
-      command: systemctl enable docker
+      raw: systemctl start docker && systemctl enable docker
 
     - name: Add ec2-user to docker group
-      command: usermod -aG docker ec2-user
+      raw: usermod -aG docker ec2-user
 
     - name: Download Docker Compose v2
-      command: curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
+      raw: curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" -o /usr/local/bin/docker-compose
 
     - name: Make Docker Compose executable
-      command: chmod +x /usr/local/bin/docker-compose
+      raw: chmod +x /usr/local/bin/docker-compose
 
     # -------------------------------------------------------------
-    # PRÉPARATION DE L'APPLICATION (DOCKER-COMPOSE STATS)
+    # PRÉPARATION DE L'APPLICATION (VIA RAW)
     # -------------------------------------------------------------
     - name: Create application directory
-      command: mkdir -p "{{ app_dir }}"
-
-    - name: Set permissions on application directory
-      command: chown -R ec2-user:ec2-user "{{ app_dir }}"
+      raw: mkdir -p "{{ app_dir }}" && honest_owner_var="{{ app_dir }}" && chown -R ec2-user:ec2-user $honest_owner_var
 
     - name: Create docker-compose.yml configuration file
-      copy:
-        dest: "{{ app_dir }}/docker-compose.yml"
-        owner: ec2-user
-        group: ec2-user
-        mode: '0644'
-        content: |
-          version: '3.8'
+      raw: |
+        cat << 'EOF' > "{{ app_dir }}/docker-compose.yml"
+        version: '3.8'
 
-          services:
-            # Base de données MongoDB
-            mongodb:
-              image: mongo:latest
-              container_name: mongodb
-              ports:
-                - "27017:27017"
-              volumes:
-                - mongo_data:/data/db
-              networks:
-                - ecommerce_net
+        services:
+          mongodb:
+            image: mongo:latest
+            container_name: mongodb
+            ports:
+              - "27017:27017"
+            volumes:
+              - mongo_data:/data/db
+            networks:
+              - ecommerce_net
 
-            # Application Node.js (Simulée pour le Lab avec PM2/Node)
-            node_app:
-              image: node:18-alpine
-              container_name: node_app
-              working_dir: /usr/src/app
-              command: sh -c "npm install -g pm2 && echo 'const http = require(\"http\"); const server = http.createServer((req, res) => { res.writeHead(200, {\"Content-Type\": \"text/html\"}); res.end(\"<h1>E-Commerce Store</h1><ul><li>Laptop \$$1200</li><li>Phone \$$800</li></ul>\"); }); server.listen(3000, () => console.log(\"Server running on port 3000\"));' > app.js && pm2-runtime start app.js"
-              ports:
-                - "3000:3000"
-              depends_on:
-                - mongodb
-              networks:
-                - ecommerce_net
+          node_app:
+            image: node:18-alpine
+            container_name: node_app
+            working_dir: /usr/src/app
+            command: sh -c "npm install -g pm2 && echo 'const http = require(\"http\"); const server = http.createServer((req, res) => { res.writeHead(200, {\"Content-Type\": \"text/html\"}); res.end(\"<h1>E-Commerce Store</h1><ul><li>Laptop \$$1200</li><li>Phone \$$800</li></ul>\"); }); server.listen(3000, () => console.log(\"Server running on port 3000\"));' > app.js && pm2-runtime start app.js"
+            ports:
+              - "3000:3000"
+            depends_on:
+              - mongodb
+            networks:
+              - ecommerce_net
 
-            # Reverse Proxy Nginx
-            nginx:
-              image: nginx:alpine
-              container_name: nginx_proxy
-              ports:
-                - "80:80"
-              volumes:
-                - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-              depends_on:
-                - node_app
-              networks:
-                - ecommerce_net
+          nginx:
+            image: nginx:alpine
+            container_name: nginx_proxy
+            ports:
+              - "80:80"
+            volumes:
+              - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+            depends_on:
+              - node_app
+            networks:
+              - ecommerce_net
 
-          volumes:
-            mongo_data:
+        volumes:
+          mongo_data:
 
-          networks:
-            ecommerce_net:
-              driver: bridge
+        networks:
+          ecommerce_net:
+            driver: bridge
+        EOF
+
+    - name: Fix docker-compose.yml permissions
+      raw: chown ec2-user:ec2-user "{{ app_dir }}/docker-compose.yml" && chmod 0644 "{{ app_dir }}/docker-compose.yml"
 
     - name: Create nginx.conf configuration file
-      copy:
-        dest: "{{ app_dir }}/nginx.conf"
-        owner: ec2-user
-        group: ec2-user
-        mode: '0644'
-        content: |
-          server {
-              listen 80;
-              server_name localhost;
+      raw: |
+        cat << 'EOF' > "{{ app_dir }}/nginx.conf"
+        server {
+            listen 80;
+            server_name localhost;
 
-              location / {
-                  proxy_pass http://node_app:3000;
-                  proxy_set_header Host $host;
-                  proxy_set_header X-Real-IP $remote_addr;
-                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                  proxy_set_header X-Forwarded-Proto $scheme;
-              }
-          }
+            location / {
+                proxy_pass http://node_app:3000;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+        }
+        EOF
+
+    - name: Fix nginx.conf permissions
+      raw: chown ec2-user:ec2-user "{{ app_dir }}/nginx.conf" && chmod 0644 "{{ app_dir }}/nginx.conf"
 
     # -------------------------------------------------------------
-    # LANCEMENT DE LA ARCHITECTURE APPLICATIVE
+    # LANCEMENT DE L'ARCHITECTURE APPLICATIVE (VIA RAW)
     # -------------------------------------------------------------
     - name: Tear down existing Docker Compose services (if any)
-      command: /usr/local/bin/docker-compose down
-      args:
-        chdir: "{{ app_dir }}"
+      raw: cd "{{ app_dir }}" && /usr/local/bin/docker-compose down
       failed_when: false
 
     - name: Start stack using Docker Compose
-      command: /usr/local/bin/docker-compose up -d
-      args:
-        chdir: "{{ app_dir }}"
+      raw: cd "{{ app_dir }}" && /usr/local/bin/docker-compose up -d
