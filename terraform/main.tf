@@ -169,13 +169,20 @@ resource "aws_lb_listener" "front_end" {
   }
 }
 
+# =======================================================
+# Récupération automatique de la dernière AMI Amazon Linux
+# =======================================================
+data "aws_ssm_parameter" "amazon_linux" {
+  name = "/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2"
+}
+
 # =========================
 # Instances EC2 (Attendues par outputs.tf)
 # =========================
 
 resource "aws_instance" "web" {
   count                       = 2
-  ami                         = "ami-0c55b159cbfafe1f0" # ID AMI Amazon Linux 2 (Vérifie si elle correspond bien à ta région)
+  ami                         = "data.aws_ssm_parameter.amazon_linux.value" # ID AMI Amazon Linux 2 (Vérifie si elle correspond bien à ta région)
   instance_type               = "t3.micro"
   
   # Répartit les 2 instances sur tes sous-réseaux publics pour l'accès Ansible
